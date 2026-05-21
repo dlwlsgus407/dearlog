@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
+
+@theme {
+  --font-family-sans: 'Noto Sans KR', sans-serif;
+
+  --color-dearlog-background: #F8F3EA;
+  --color-dearlog-surface: #FFFDF8;
+  --color-dearlog-primary: #8B5E3C;
+  --color-dearlog-primary-dark: #6F4A30;
+  --color-dearlog-peach-accent: #EBC7A6;
+  --color-dearlog-peach-light: #F4DDD0;
+  --color-dearlog-pale-sage: #D9E0D2;
+  --color-dearlog-muted-sage: #C7D1BE;
+  --color-dearlog-text-primary: #3E3128;
+  --color-dearlog-text-secondary: #7A6A5C;
+  --color-dearlog-border: #E7DED2;
+  --color-dearlog-amber-clay: #C8956C;
+  --color-dearlog-sage: #6B8F71;
+  --color-dearlog-sepia-tint: #F2D9B8;
+}
+
+* {
+  font-family: 'Noto Sans KR', sans-serif;
+}
+
+body {
+  background-color: #F8F3EA;
+  color: #3E3128;
+}
