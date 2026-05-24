@@ -13,6 +13,7 @@ import ChildPhotosScreen from './pages/ChildPhotosScreen'
 import ChildProgressScreen from './pages/ChildProgressScreen'
 import ChildChaptersScreen from './pages/ChildChaptersScreen'
 import MyPageScreen from './pages/MyPageScreen'
+import CalendarScreen from './pages/CalendarScreen'
 import { useScheduledCall } from './hooks/useScheduledCall'
 
 function ScheduledCallMonitor() {
@@ -41,6 +42,7 @@ export default function App() {
           <Route path="/child/progress" element={<ChildProgressScreen />} />
           <Route path="/child/chapters" element={<ChildChaptersScreen />} />
           <Route path="/mypage" element={<MyPageScreen />} />
+          <Route path="/calendar" element={<CalendarScreen />} />
         </Routes>
       </div>
     </BrowserRouter>

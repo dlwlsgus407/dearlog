@@ -56,11 +56,22 @@ function DocIcon({ active }: { active: boolean }) {
   )
 }
 
+function PersonIcon({ active }: { active: boolean }) {
+  const c = active ? '#8B5E3C' : '#7A6A5C'
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="8" r="4" fill={active ? '#C8956C' : 'none'} stroke={c} strokeWidth="1.8" />
+      <path d="M4 20C4 16.134 7.582 13 12 13C16.418 13 20 16.134 20 20" stroke={c} strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 const TABS = [
   { path: '/parent', label: '홈', Icon: HomeIcon },
   { path: '/parent/interview', label: '인터뷰', Icon: MicIcon },
   { path: '/parent/progress', label: '진척도', Icon: ChartIcon },
   { path: '/parent/transcript', label: '원문기록', Icon: DocIcon },
+  { path: '/mypage', label: '마이페이지', Icon: PersonIcon },
 ]
 
 export default function BottomNav() {
@@ -73,6 +84,8 @@ export default function BottomNav() {
         {TABS.map(({ path, label, Icon }) => {
           const active = path === '/parent'
             ? location.pathname === '/parent'
+            : path === '/mypage'
+            ? location.pathname === '/mypage'
             : location.pathname.startsWith(path)
           return (
             <button
