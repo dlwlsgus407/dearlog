@@ -1,6 +1,6 @@
 # DEARLOG — 구현 TODO
 
-> 마지막 업데이트: 2026-05-24
+> 마지막 업데이트: 2026-05-25
 > 기준: CLAUDE.md 화면 구성 + 기술 스택
 
 ---
@@ -129,20 +129,292 @@
 
 ---
 
-## Phase 5. AI 에이전트 연동
-- [ ] Claude API 설정 (`lib/agents/`)
-- [ ] 인터뷰 질문 생성 에이전트
-- [ ] 음성 원문 → AI 정리본 변환 에이전트
-- [ ] 사진 업로드 → 질문 자동 생성 에이전트
-- [ ] RAG 기반 디지털 페르소나 챗봇
+## Phase 5. AI 에이전트 연동 ← 현재 작업
+
+> 에이전트 스펙 출처: `agents/01_interviewer.md` ~ `agents/07_calendar_trigger.md` (총 7개)
 
 ---
 
-## Phase 6. 자서전 생성
-- [ ] 챕터별 완료율 계산 로직
-- [ ] 챕터 자서전 생성 (PDF export)
+### 5-0. 공통 기반 세팅 (선행 필수)
+
+#### 패키지 설치
+- [ ] `npm install @anthropic-ai/sdk` — Claude API 클라이언트
+- [ ] `npm install uuid && npm install -D @types/uuid` — chunkId 생성용
+
+#### 환경변수
+- [ ] `.env.local` 파일 생성: `VITE_ANTHROPIC_API_KEY=sk-ant-...`
+- [ ] `.gitignore`에 `.env.local` 포함 여부 확인
+
+#### 타입 통합 — `src/types/agents.ts` 신규
+```
+[01 Interviewer]
+  InterviewerResult { question, detectedKeywords, confidence }
+
+[02 Archivist]
+  MemoryChunk { raw, clean, tags, reliabilityLabel, chapterHint, timelinePosition }
+  ArchivistResult { chunk, chunkId, createdAt }
+
+[03 Digital Twin]
+  ToneProfile { patterns, name }          ← 03·04 공통
+  EvidenceBadge { usedChunkIds, reliability, note }
+  DigitalTwinResult { responseText, questionType, evidenceBadge,
+                      fallbackTriggered, suggestedInterviewTopic }
+
+[04 Ghostwriter]
+  Paragraph { paragraphId, text, sourceChunkIds, reliability, uncertaintyNote }
+  GhostwriterResult { chapterId, chapterTitle, paragraphs,
+                      missingSections, toneProfile }
+
+[05 Verification]
+  ConflictType = 'TIME_CONFLICT' | 'PERSON_CONFLICT' | 'FACT_CONFLICT' | 'DUPLICATE'
+  Conflict { conflictType, conflictingChunkId, description, recommendedAction }
+  VerificationResult { chunkId, status, reliabilityScore, uncertaintyFlag,
+                       conflicts, verifiedAt }
+
+[06 Question Queue]
+  QuestionQueueResult { originalQuestion, reformulatedQuestion, priority,
+                        isAnonymous, transformReason, sensitivityLevel, suggestedTopic }
+
+[07 Calendar Trigger]
+  EventType = '결혼식' | '졸업식' | '생일' | '기념일' | '기일' | '입학' | '출산'
+  CalendarEvent { eventId, eventType, eventDate, relatedPersons, recipientId }
+  EditedStory { text, sourceChunkIds, reliability }
+  CalendarTriggerResult { eventId, triggerType, editedStory,
+                          suggestedInterviewTopics, matchedChunkIds }
+```
+
+#### 기존 타입/스토어 수정
+- [ ] `src/types/interview.ts` — `Transcript`에 `chunk?: MemoryChunk` 필드 추가
+  - 하위호환 유지: optional로 추가, 기존 데모 데이터 영향 없음
+- [ ] `src/types/child.ts` — `ChildQuestion`에 `originalText?: string` 필드 추가
+  - Question Queue가 재구성 전 원본을 보존하기 위해 필요
+- [ ] `src/store/interviewStore.ts` 수정
+  - `addTranscript(transcript: Transcript)` 액션 추가 (현재 없음)
+  - `markQuestionCompleted(questionId, rawText)` — rawText 파라미터 추가 (현재 placeholder 하드코딩)
+  - `getChapterCompletionRate(chapterId): number` — 완료 질문 수 / 전체 질문 수
+  - `isChapterReady(chapterId): boolean` — 완료율 ≥ 70%
+- [ ] `src/store/calendarStore.ts` **신규**
+  - `events: CalendarEvent[]`
+  - `addEvent`, `removeEvent`, `getUpcomingEvents` 액션
+  - Zustand persist 적용
+
+---
+
+### 5-1. Interviewer Agent — 꼬리질문 생성
+
+**파일:** `src/lib/agents/interviewer.ts`  
+**스펙:** `agents/01_interviewer.md`
+
+- [ ] 시스템 프롬프트 구현
+  - 꼬리질문 우선순위 5단계: 인물→장소→감정→사건→시간
+  - 금지 유형: 예/아니오, 복합질문, 감정단정, 유도형
+- [ ] `generateFollowUpQuestion(userAnswer, currentTopic, previousQuestions): Promise<InterviewerResult>`
+  - `claude-sonnet-4-20250514`, max_tokens: 300
+  - JSON 파싱 → `InterviewerResult`
+  - fallback: `{ question: "그때 기억나는 장면이 있으신가요?", confidence: 'low', detectedKeywords: {...} }`
+- [ ] **`ParentInterviewScreen.tsx` 연동**
+  - 통화 중(화면 3) "다음 질문" 버튼 클릭 시 호출
+  - 호출 중 버튼 비활성화 + 로딩 인디케이터
+  - 생성된 꼬리질문 → 화면의 현재 질문 텍스트 교체
+
+---
+
+### 5-2. Archivist Agent — 원문 구조화 + Verification 서브모듈
+
+**파일:** `src/lib/agents/archivist.ts`, `src/lib/agents/verification.ts`  
+**스펙:** `agents/02_archivist.md`, `agents/05_verification.md`
+
+#### Archivist
+- [ ] 시스템 프롬프트 구현
+  - NER 4종 (PERSON, PLACE, TIME, EVENT) + 신뢰도 라벨
+  - 감정 태깅 8종, 불확실 표현 자동 감지
+- [ ] `archiveTranscript(rawText, sessionTopic, chapterId): Promise<ArchivistResult>`
+  - `claude-sonnet-4-20250514`, max_tokens: 1000
+  - `uuid()` → chunkId 생성
+  - fallback: `{ chunk: { raw: rawText, clean: rawText, tags: {빈값}, ... }, ... }`
+
+#### Verification (Archivist 완료 직후 자동 호출)
+- [ ] 시스템 프롬프트 구현
+  - 충돌 유형 4종: TIME_CONFLICT / PERSON_CONFLICT / FACT_CONFLICT / DUPLICATE
+  - 신뢰도 점수 3단계, 불확실 표현 자동 태깅 트리거
+- [ ] `verifyChunk(newChunk, existingChunks): Promise<VerificationResult>`
+  - `claude-sonnet-4-20250514`, max_tokens: 600
+  - 기존 chunks 0개면 API 호출 없이 즉시 PASS 반환
+  - 비교 대상: 최신 10개 chunks (`slice(-10)`)
+  - fallback: `{ status: 'PASS', reliabilityScore: 'MEDIUM', conflicts: [] }`
+
+#### ParentInterviewScreen 연동
+- [ ] 통화 완료(화면 4) 진입 시 순차 실행:
+  ```
+  archiveTranscript() → verifyChunk() → interviewStore.addTranscript()
+  ```
+- [ ] `status === 'FLAG'` 시 충돌 알림 카드 표시
+  - 충돌 유형 + 설명 + 권장 조치 ("사용자 확인 요청" 등)
+  - 확인 버튼 → 알림 닫기 (기록은 그대로 저장)
+- [ ] 아카이빙 완료 → "저장됨" 토스트 메시지 (1초)
+
+#### ParentTranscriptScreen 수정
+- [ ] `aiSummary` 평문 → `chunk.clean` + `chunk.tags` 구조화 렌더링
+  - NER 태그 뱃지 (인물 🟤 / 장소 🟢 / 시간 🔵 / 사건 🟠)
+  - 신뢰도 라벨 색상: CONFIRMED(Sage) / ESTIMATED(Amber) / UNVERIFIED(회색)
+- [ ] `VerificationResult.conflicts` 있으면 "검토 필요" 배너 표시
+
+---
+
+### 5-3. Question Queue Agent — 자녀 질문 재구성
+
+**파일:** `src/lib/agents/questionQueue.ts`  
+**스펙:** `agents/06_question_queue.md`
+
+- [ ] 시스템 프롬프트 구현
+  - 변환 원칙: 직접→간접, 사실확인→기억회상, 민감→우회, 판단→경험중심
+  - 변환 예시 3가지 포함
+- [ ] `reformulateQuestion(originalQuestion, priority, isAnonymous, currentTopic): Promise<QuestionQueueResult>`
+  - `claude-sonnet-4-20250514`, max_tokens: 400
+  - fallback: 원본 질문 그대로 사용 (`reformulatedQuestion = originalQuestion`)
+- [ ] **`ChildQuestionsScreen.tsx` 연동**
+  - 질문 등록 버튼 클릭 시 호출
+  - 호출 중 로딩 상태: "질문을 정리하고 있어요..." 텍스트
+  - `childStore.addQuestion({ text: reformulatedQuestion, originalText: originalQuestion, ... })`
+  - 재구성 완료 후 "등록됐어요 ✓" 피드백
+  - `sensitivityLevel === 'high'` 시 미리보기: "이렇게 전달될 예정이에요" 모달
+
+---
+
+### 5-4. Calendar Trigger Agent — 이벤트 기반 기억 전달
+
+**파일:** `src/lib/agents/calendarTrigger.ts`  
+**스펙:** `agents/07_calendar_trigger.md`
+
+- [ ] 시스템 프롬프트 구현
+  - 지원 이벤트 7종 + EVENT_KEYWORDS 맵
+  - 편집 형식: 도입부·본문·마무리, 200~400자
+  - 기억 없을 때: 창작 금지, 인터뷰 주제 목록만 반환
+- [ ] `processCalendarTrigger(event, memoryChunks): Promise<CalendarTriggerResult>`
+  - `claude-sonnet-4-20250514`, max_tokens: 700
+  - 관련 chunk 0개면 API 호출 없이 즉시 `INTERVIEW` 트리거 반환
+  - fallback: `{ triggerType: 'INTERVIEW', editedStory: null, suggestedInterviewTopics: [...] }`
+
+#### CalendarScreen 수정
+- [ ] 이벤트 등록 UI 추가 (현재 달력만 있음)
+  - 날짜 선택 → 이벤트 유형 7종 선택 → 관련 인물 입력
+  - 등록 시 `calendarStore.addEvent()` 저장
+- [ ] 등록된 이벤트 날짜에 마커 표시
+- [ ] 이벤트 탭 클릭 → 즉시 `processCalendarTrigger()` 호출
+  - `DELIVERY` → 편집된 이야기 카드 표시 (자녀에게 공유 버튼)
+  - `INTERVIEW` → "이 주제로 인터뷰해 보세요" 주제 목록 카드
+
+#### useScheduledCall 확장
+- [ ] D-1일 이벤트 감지 로직 추가
+  - 매분 체크 시 `calendarStore.getUpcomingEvents(1일 후)` 조회
+  - 해당 이벤트 있으면 `processCalendarTrigger()` 실행
+  - `DELIVERY` 결과 → 알림 카드 (홈 화면 상단)
+  - `INTERVIEW` 결과 → 인터뷰 세션 생성 알림
+
+---
+
+### 5-5. Digital Twin Agent — 페르소나 챗봇
+
+**파일:** `src/lib/agents/digitalTwin.ts`  
+**스펙:** `agents/03_digital_twin.md`
+
+- [ ] 시스템 프롬프트 구현
+  - 질문 유형 4종 처리 (fact / recall / value / person)
+  - 기억 없을 때: "그 부분은 아직 기억이 남아있지 않네요..."
+  - 절대 금지: chunk 없는 창작, 추측성 응답
+- [ ] `generatePersonaResponse(userQuestion, memoryChunks, toneProfile): Promise<DigitalTwinResult>`
+  - UNVERIFIED chunk 제외 후 최대 5개만 컨텍스트 주입
+  - `claude-sonnet-4-20250514`, max_tokens: 500
+  - fallback: 오류 안내 메시지 반환
+- [ ] **`ChatbotScreen.tsx` 신규 구현**
+  - 상단: 시니어 이름 + 아바타 헤더
+  - 말풍선: 왼쪽(시니어 응답, Surface `#FFFDF8`) / 오른쪽(자녀 질문, Peach Light `#F4DDD0`)
+  - 시니어 응답 카드 하단: evidenceBadge 소형 뱃지 ("○○기억 기반 · HIGH")
+  - `suggestedInterviewTopic` 있으면 하단 제안 칩: "이 주제 더 여쭤볼까요?" → `/child/questions`
+  - `fallbackTriggered=true` → 응답 텍스트 회색 이탤릭 스타일
+  - 스크롤 뷰 + 하단 고정 입력창 + 전송 버튼 (min-h-48px)
+- [ ] `App.tsx`에 `/child/chatbot` 라우트 추가
+- [ ] `ChildHomeScreen.tsx` 수정 — "대화하기" 진입 카드 추가 (BottomNav 변경 없음)
+
+---
+
+### 5-6. Ghostwriter Agent — 자서전 초안 생성
+
+**파일:** `src/lib/agents/ghostwriter.ts`  
+**스펙:** `agents/04_ghostwriter.md`
+
+- [ ] 시스템 프롬프트 구현
+  - 챕터 구조 5장 고정, CHAPTER_KEYWORDS 맵 정의
+  - 문체 규칙: 구어체 60% / 문어체 40%, 문단 150~300자
+  - 절대 금지: chunk 없는 사실 추가, UNVERIFIED 단정 서술
+- [ ] `generateChapterDraft(chapterId, chapterTitle, chunks, toneProfile): Promise<GhostwriterResult>`
+  - 챕터 관련 chunk 필터링 (chapterHint || CHAPTER_KEYWORDS 매칭)
+  - 관련 chunk 0개면 API 호출 없이 즉시 빈 결과 반환
+  - `claude-sonnet-4-20250514`, max_tokens: 1500
+  - `uuid()` → 각 paragraphId 생성
+- [ ] `src/store/autobiographyStore.ts` **신규 스토어**
+  - `drafts: GhostwriterResult[]`, `isGenerating: boolean`
+  - `setDrafts`, `setGenerating`, `clearDrafts`
+  - Zustand persist 적용
+- [ ] **`AutobiographyScreen.tsx` 신규 구현**
+  - 상단 챕터 탭 (1장~5장)
+  - 각 문단: 본문 + 신뢰도 뱃지 + 출처 chunk 수 ("기억 3개 기반")
+  - `uncertaintyNote` 있으면 회색 이탤릭 주석
+  - `missingSections` → "아직 기록되지 않은 구간" 점선 카드
+  - 하단 "PDF 저장" 버튼 (Phase 6 연결 전: 비활성 + "준비 중" 툴팁)
+- [ ] `App.tsx`에 `/parent/autobiography` 라우트 추가
+- [ ] **`ParentProgressScreen.tsx` 수정**
+  - "자서전 생성하기" 버튼 추가
+  - 활성 조건: `isChapterReady()` 하나라도 true
+  - 클릭 → `Promise.all(챕터별 generateChapterDraft)` 병렬 호출
+  - 로딩 오버레이: "자서전을 쓰고 있어요..." (Amber Clay 스피너)
+  - 완료 → `/parent/autobiography` 이동
+
+---
+
+### 구현 순서 (의존성 기반)
+```
+5-0 (공통 기반: 패키지·타입·스토어)
+  → 5-1 Interviewer          (ParentInterview 연동)
+  → 5-2 Archivist+Verify     (ParentInterview 완료 후 체인)
+  → 5-3 Question Queue       (ChildQuestions 연동)
+  → 5-4 Calendar Trigger     (CalendarScreen 확장)
+  → 5-5 Digital Twin         (ChatbotScreen 신규)
+  → 5-6 Ghostwriter          (AutobiographyScreen 신규)
+```
+
+**의존 관계:**
+- 5-5 Digital Twin은 5-2 Archivist가 쌓은 MemoryChunk를 소비 → 5-2 먼저
+- 5-6 Ghostwriter도 MemoryChunk 소비 → 5-2 먼저
+- 5-4 Calendar Trigger도 MemoryChunk 사용 → 5-2 먼저
+- 5-1 Interviewer는 독립적 → 어느 단계에서도 시작 가능
+
+---
+
+## Phase 6. 자서전 PDF 생성
+
+### 6-1. PDF 렌더러 세팅
+- [ ] `npm install @react-pdf/renderer`
+- [ ] `src/components/AutobiographyPDF.tsx` — react-pdf 레이아웃
+  - 커버 페이지: 이름, 생성일, DEARLOG 로고
+  - 챕터별 본문: 제목 + 문단 + 신뢰도 각주
+  - Noto Sans KR 폰트 임베드
+
+### 6-2. PDF 다운로드 연동
+- [ ] `AutobiographyScreen.tsx` — "PDF 저장" 버튼 → `PDFDownloadLink` 교체
+- [ ] 다운로드 완료 토스트
 
 ---
 
 ## 리뷰 섹션
-<!-- 각 Phase 완료 후 회고 기록 -->
+
+### Phase 0~4 회고 (2026-05-25 기준)
+- Phase 0~4 모두 완료. 화면 26개, 스토어 5개, 타입 3개 구축됨.
+- `src/lib/agents/` 폴더 미생성 → Phase 5-0에서 생성 시작.
+- 현재 AI 기능 전부 setTimeout 모킹 → Phase 5에서 실제 Claude API로 교체.
+- `agents/` 폴더: 7개 스펙 파일 존재 (01~07). 순서대로 모두 파악 완료.
+- `Transcript`에 `chunk?: MemoryChunk` 추가 필요 (하위호환 유지).
+- `ChildQuestion`에 `originalText?: string` 추가 필요 (06 Question Queue용).
+- `interviewStore.markQuestionCompleted`가 rawText 하드코딩 → 파라미터화 필요.
+- `calendarStore` 신규 필요 (07 Calendar Trigger + CalendarScreen 이벤트 등록).
+- `autobiographyStore` 신규 필요 (06 Ghostwriter 결과 저장).
