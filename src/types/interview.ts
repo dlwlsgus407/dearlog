@@ -1,3 +1,5 @@
+import type { MemoryChunk } from './agents'
+
 export interface Question {
   id: string
   text: string
@@ -23,4 +25,5 @@ export interface Transcript {
   originalText: string
   aiSummary: string
   recordedAt: string
+  chunk?: MemoryChunk
 }

@@ -138,12 +138,16 @@
 ### 5-0. 공통 기반 세팅 (선행 필수)
 
 #### 패키지 설치
-- [ ] `npm install @anthropic-ai/sdk` — Claude API 클라이언트
-- [ ] `npm install uuid && npm install -D @types/uuid` — chunkId 생성용
+- [x] `npm install openai uuid && npm install -D @types/uuid`
 
 #### 환경변수
-- [ ] `.env.local` 파일 생성: `VITE_ANTHROPIC_API_KEY=sk-ant-...`
-- [ ] `.gitignore`에 `.env.local` 포함 여부 확인
+- [x] `.env.example` 생성 (`VITE_OPENAI_API_KEY=your_openai_api_key_here`)
+- [x] `.gitignore`에 `.env`, `.env.local` 추가
+
+#### 데모/실제 모드 토글
+- [x] `src/store/devModeStore.ts` — `isDemoMode: true` 기본값, persist
+- [x] `src/lib/agents/config.ts` — `isDemoMode()` 헬퍼 (getState 패턴)
+- [x] `MyPageScreen.tsx` — 개발자 설정 섹션 추가 (ON=초록 데모 / OFF=주황 실제)
 
 #### 타입 통합 — `src/types/agents.ts` 신규
 ```
@@ -184,15 +188,12 @@
 ```
 
 #### 기존 타입/스토어 수정
-- [ ] `src/types/interview.ts` — `Transcript`에 `chunk?: MemoryChunk` 필드 추가
-  - 하위호환 유지: optional로 추가, 기존 데모 데이터 영향 없음
+- [x] `src/types/agents.ts` 신규 — 모든 에이전트 타입 정의
+- [x] `src/types/interview.ts` — `Transcript`에 `chunk?: MemoryChunk` 필드 추가 (하위호환 유지)
 - [ ] `src/types/child.ts` — `ChildQuestion`에 `originalText?: string` 필드 추가
-  - Question Queue가 재구성 전 원본을 보존하기 위해 필요
-- [ ] `src/store/interviewStore.ts` 수정
-  - `addTranscript(transcript: Transcript)` 액션 추가 (현재 없음)
-  - `markQuestionCompleted(questionId, rawText)` — rawText 파라미터 추가 (현재 placeholder 하드코딩)
-  - `getChapterCompletionRate(chapterId): number` — 완료 질문 수 / 전체 질문 수
-  - `isChapterReady(chapterId): boolean` — 완료율 ≥ 70%
+- [x] `src/store/interviewStore.ts` 수정 — `markQuestionCompleted(questionId, rawText?)` rawText 파라미터화
+- [ ] `src/store/interviewStore.ts` — `addTranscript`, `getChapterCompletionRate`, `isChapterReady` 추가
+- [x] `src/store/autobiographyStore.ts` **신규** — `chapters: GhostwriterResult[]`, persist 적용
 - [ ] `src/store/calendarStore.ts` **신규**
   - `events: CalendarEvent[]`
   - `addEvent`, `removeEvent`, `getUpcomingEvents` 액션
@@ -205,13 +206,11 @@
 **파일:** `src/lib/agents/interviewer.ts`  
 **스펙:** `agents/01_interviewer.md`
 
-- [ ] 시스템 프롬프트 구현
+- [x] 시스템 프롬프트 구현
   - 꼬리질문 우선순위 5단계: 인물→장소→감정→사건→시간
   - 금지 유형: 예/아니오, 복합질문, 감정단정, 유도형
-- [ ] `generateFollowUpQuestion(userAnswer, currentTopic, previousQuestions): Promise<InterviewerResult>`
-  - `claude-sonnet-4-20250514`, max_tokens: 300
-  - JSON 파싱 → `InterviewerResult`
-  - fallback: `{ question: "그때 기억나는 장면이 있으신가요?", confidence: 'low', detectedKeywords: {...} }`
+- [x] `generateFollowUpQuestion(userAnswer, currentTopic, previousQuestions): Promise<InterviewerResult>`
+  - `gpt-4o-mini`, max_tokens: 300, fallback 포함
 - [ ] **`ParentInterviewScreen.tsx` 연동**
   - 통화 중(화면 3) "다음 질문" 버튼 클릭 시 호출
   - 호출 중 버튼 비활성화 + 로딩 인디케이터
@@ -225,23 +224,14 @@
 **스펙:** `agents/02_archivist.md`, `agents/05_verification.md`
 
 #### Archivist
-- [ ] 시스템 프롬프트 구현
-  - NER 4종 (PERSON, PLACE, TIME, EVENT) + 신뢰도 라벨
-  - 감정 태깅 8종, 불확실 표현 자동 감지
-- [ ] `archiveTranscript(rawText, sessionTopic, chapterId): Promise<ArchivistResult>`
-  - `claude-sonnet-4-20250514`, max_tokens: 1000
-  - `uuid()` → chunkId 생성
-  - fallback: `{ chunk: { raw: rawText, clean: rawText, tags: {빈값}, ... }, ... }`
+- [x] 시스템 프롬프트 구현 — NER 4종 + 감정 8종 + 신뢰도 라벨
+- [x] `archiveTranscript(rawText, sessionTopic, chapterId): Promise<ArchivistResult>`
+  - `gpt-4o-mini`, max_tokens: 1000, uuid() chunkId, fallback 포함
 
-#### Verification (Archivist 완료 직후 자동 호출)
-- [ ] 시스템 프롬프트 구현
-  - 충돌 유형 4종: TIME_CONFLICT / PERSON_CONFLICT / FACT_CONFLICT / DUPLICATE
-  - 신뢰도 점수 3단계, 불확실 표현 자동 태깅 트리거
-- [ ] `verifyChunk(newChunk, existingChunks): Promise<VerificationResult>`
-  - `claude-sonnet-4-20250514`, max_tokens: 600
-  - 기존 chunks 0개면 API 호출 없이 즉시 PASS 반환
-  - 비교 대상: 최신 10개 chunks (`slice(-10)`)
-  - fallback: `{ status: 'PASS', reliabilityScore: 'MEDIUM', conflicts: [] }`
+#### Verification
+- [x] 시스템 프롬프트 구현 — 충돌 유형 4종
+- [x] `verifyChunk(newChunk, existingChunks): Promise<VerificationResult>`
+  - 기존 chunks 0개면 즉시 PASS, slice(-10), fallback 포함
 
 #### ParentInterviewScreen 연동
 - [ ] 통화 완료(화면 4) 진입 시 순차 실행:
@@ -266,12 +256,9 @@
 **파일:** `src/lib/agents/questionQueue.ts`  
 **스펙:** `agents/06_question_queue.md`
 
-- [ ] 시스템 프롬프트 구현
-  - 변환 원칙: 직접→간접, 사실확인→기억회상, 민감→우회, 판단→경험중심
-  - 변환 예시 3가지 포함
-- [ ] `reformulateQuestion(originalQuestion, priority, isAnonymous, currentTopic): Promise<QuestionQueueResult>`
-  - `claude-sonnet-4-20250514`, max_tokens: 400
-  - fallback: 원본 질문 그대로 사용 (`reformulatedQuestion = originalQuestion`)
+- [x] 시스템 프롬프트 구현 — 변환 원칙 4가지 + 예시 3가지
+- [x] `reformulateQuestion(originalQuestion, priority, isAnonymous, currentTopic): Promise<QuestionQueueResult>`
+  - `gpt-4o-mini`, max_tokens: 400, fallback: 원본 질문 그대로 반환
 - [ ] **`ChildQuestionsScreen.tsx` 연동**
   - 질문 등록 버튼 클릭 시 호출
   - 호출 중 로딩 상태: "질문을 정리하고 있어요..." 텍스트
@@ -286,14 +273,9 @@
 **파일:** `src/lib/agents/calendarTrigger.ts`  
 **스펙:** `agents/07_calendar_trigger.md`
 
-- [ ] 시스템 프롬프트 구현
-  - 지원 이벤트 7종 + EVENT_KEYWORDS 맵
-  - 편집 형식: 도입부·본문·마무리, 200~400자
-  - 기억 없을 때: 창작 금지, 인터뷰 주제 목록만 반환
-- [ ] `processCalendarTrigger(event, memoryChunks): Promise<CalendarTriggerResult>`
-  - `claude-sonnet-4-20250514`, max_tokens: 700
-  - 관련 chunk 0개면 API 호출 없이 즉시 `INTERVIEW` 트리거 반환
-  - fallback: `{ triggerType: 'INTERVIEW', editedStory: null, suggestedInterviewTopics: [...] }`
+- [x] 시스템 프롬프트 구현 — 이벤트 7종 + EVENT_KEYWORDS 맵
+- [x] `processCalendarTrigger(event, memoryChunks): Promise<CalendarTriggerResult>`
+  - `gpt-4o-mini`, max_tokens: 700, 관련 chunk 0개면 즉시 INTERVIEW, fallback 포함
 
 #### CalendarScreen 수정
 - [ ] 이벤트 등록 UI 추가 (현재 달력만 있음)
@@ -318,14 +300,9 @@
 **파일:** `src/lib/agents/digitalTwin.ts`  
 **스펙:** `agents/03_digital_twin.md`
 
-- [ ] 시스템 프롬프트 구현
-  - 질문 유형 4종 처리 (fact / recall / value / person)
-  - 기억 없을 때: "그 부분은 아직 기억이 남아있지 않네요..."
-  - 절대 금지: chunk 없는 창작, 추측성 응답
-- [ ] `generatePersonaResponse(userQuestion, memoryChunks, toneProfile): Promise<DigitalTwinResult>`
-  - UNVERIFIED chunk 제외 후 최대 5개만 컨텍스트 주입
-  - `claude-sonnet-4-20250514`, max_tokens: 500
-  - fallback: 오류 안내 메시지 반환
+- [x] 시스템 프롬프트 구현 — 질문 유형 4종, fallback 문구 정의
+- [x] `generatePersonaResponse(userQuestion, memoryChunks, toneProfile): Promise<DigitalTwinResult>`
+  - UNVERIFIED 제외, 최대 5개, `gpt-4o-mini`, max_tokens: 500, fallback 포함
 - [ ] **`ChatbotScreen.tsx` 신규 구현**
   - 상단: 시니어 이름 + 아바타 헤더
   - 말풍선: 왼쪽(시니어 응답, Surface `#FFFDF8`) / 오른쪽(자녀 질문, Peach Light `#F4DDD0`)
@@ -343,19 +320,10 @@
 **파일:** `src/lib/agents/ghostwriter.ts`  
 **스펙:** `agents/04_ghostwriter.md`
 
-- [ ] 시스템 프롬프트 구현
-  - 챕터 구조 5장 고정, CHAPTER_KEYWORDS 맵 정의
-  - 문체 규칙: 구어체 60% / 문어체 40%, 문단 150~300자
-  - 절대 금지: chunk 없는 사실 추가, UNVERIFIED 단정 서술
-- [ ] `generateChapterDraft(chapterId, chapterTitle, chunks, toneProfile): Promise<GhostwriterResult>`
-  - 챕터 관련 chunk 필터링 (chapterHint || CHAPTER_KEYWORDS 매칭)
-  - 관련 chunk 0개면 API 호출 없이 즉시 빈 결과 반환
-  - `claude-sonnet-4-20250514`, max_tokens: 1500
-  - `uuid()` → 각 paragraphId 생성
-- [ ] `src/store/autobiographyStore.ts` **신규 스토어**
-  - `drafts: GhostwriterResult[]`, `isGenerating: boolean`
-  - `setDrafts`, `setGenerating`, `clearDrafts`
-  - Zustand persist 적용
+- [x] 시스템 프롬프트 구현 — CHAPTER_KEYWORDS 맵, 문체 규칙
+- [x] `generateChapterDraft(chapterId, chapterTitle, chunks, toneProfile): Promise<GhostwriterResult>`
+  - chunk 필터링(chapterHint || keywords), 0개면 즉시 반환, `gpt-4o-mini`, max_tokens: 1500
+- [x] `src/store/autobiographyStore.ts` **신규** — `chapters: GhostwriterResult[]`, persist
 - [ ] **`AutobiographyScreen.tsx` 신규 구현**
   - 상단 챕터 탭 (1장~5장)
   - 각 문단: 본문 + 신뢰도 뱃지 + 출처 chunk 수 ("기억 3개 기반")

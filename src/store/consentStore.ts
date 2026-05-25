@@ -20,7 +20,7 @@ export const useConsentStore = create<ConsentState>()(
         set((state) => ({
           consents: {
             ...state.consents,
-            [id]: { publish: true, chatbot: true, ...state.consents[id], [key]: value },
+            [id]: Object.assign({ publish: true, chatbot: true }, state.consents[id], { [key]: value }),
           },
         })),
       setAll: (ids, publish, chatbot) =>

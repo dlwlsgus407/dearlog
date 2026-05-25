@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useInterviewStore } from '../store/interviewStore'
 import { useConsentStore } from '../store/consentStore'
+import { useDevModeStore } from '../store/devModeStore'
 
 const FAMILY_MEMBERS = [
   { name: '김영자', role: 'parent' as const },
@@ -36,6 +37,7 @@ export default function MyPageScreen() {
   const { transcripts } = useInterviewStore()
   const { consents, setConsent, setAll } = useConsentStore()
 
+  const { isDemoMode, toggleDemoMode } = useDevModeStore()
   const [editingName, setEditingName] = useState(false)
   const [nameInput, setNameInput] = useState(userName)
   const [notifOn, setNotifOn] = useState(true)
@@ -396,6 +398,48 @@ export default function MyPageScreen() {
               />
             </svg>
           </button>
+        </div>
+
+        {/* 개발자 설정 */}
+        <div
+          className="rounded-2xl overflow-hidden mb-4"
+          style={{ backgroundColor: '#FFFDF8', boxShadow: '0 2px 12px rgba(139,94,60,0.08)' }}
+        >
+          <div className="px-5 py-3 border-b border-[#E7DED2] flex items-center gap-2">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M12 2a10 10 0 100 20A10 10 0 0012 2zm0 0v4m0 12v2M4.22 4.22l2.83 2.83m9.9 9.9 2.83 2.83M2 12h4m12 0h4M4.22 19.78l2.83-2.83m9.9-9.9 2.83-2.83"
+                stroke="#7A6A5C"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+            </svg>
+            <span className="text-[13px] font-medium text-[#7A6A5C]">개발자 설정</span>
+          </div>
+          <div className="px-5 py-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[16px] text-[#3E3128]">AI 모드</p>
+                <p className="text-[12px] mt-0.5" style={{ color: isDemoMode ? '#6B8F71' : '#C8956C' }}>
+                  {isDemoMode
+                    ? '데모 데이터 사용 중 (API 미호출)'
+                    : '실제 AI 응답 사용 중'}
+                </p>
+              </div>
+              <Toggle on={isDemoMode} onChange={toggleDemoMode} />
+            </div>
+            <div
+              className="mt-3 px-3 py-2 rounded-xl text-[12px] leading-snug"
+              style={{
+                backgroundColor: isDemoMode ? '#D9E0D2' : '#F4DDD0',
+                color: isDemoMode ? '#4A6B50' : '#8B5E3C',
+              }}
+            >
+              {isDemoMode
+                ? 'ON — 더미 데이터로 빠른 UI 확인 가능'
+                : 'OFF — OpenAI gpt-4o-mini 실제 호출'}
+            </div>
+          </div>
         </div>
 
         {/* 로그아웃 */}

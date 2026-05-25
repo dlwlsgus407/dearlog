@@ -107,7 +107,7 @@ const INITIAL_TRANSCRIPTS: Transcript[] = [
 interface InterviewState {
   chapters: Chapter[]
   transcripts: Transcript[]
-  markQuestionCompleted: (questionId: string) => void
+  markQuestionCompleted: (questionId: string, rawText?: string) => void
 }
 
 export const useInterviewStore = create<InterviewState>()(
@@ -115,7 +115,7 @@ export const useInterviewStore = create<InterviewState>()(
     (set) => ({
       chapters: INITIAL_CHAPTERS,
       transcripts: INITIAL_TRANSCRIPTS,
-      markQuestionCompleted: (questionId) =>
+      markQuestionCompleted: (questionId, rawText) =>
         set((state) => {
           let questionText = ''
           let chapterId = ''
@@ -139,14 +139,16 @@ export const useInterviewStore = create<InterviewState>()(
             ),
           }))
 
+          const originalText = rawText ||
+            '(데모 녹음) 녹음된 음성이 여기에 표시됩니다. 실제 앱에서는 음성 인식된 원문이 한 글자도 수정 없이 그대로 보존됩니다.'
+
           const newTranscript: Transcript = {
             id: `t_${Date.now()}`,
             questionId,
             questionText,
             chapterId,
             chapterTitle,
-            originalText:
-              '(데모 녹음) 녹음된 음성이 여기에 표시됩니다. 실제 앱에서는 음성 인식된 원문이 한 글자도 수정 없이 그대로 보존됩니다.',
+            originalText,
             aiSummary:
               '(데모 정리) AI가 정리한 내용이 여기에 표시됩니다. 말씀하신 내용의 핵심을 유지하면서 읽기 좋은 형태로 구조화합니다.',
             recordedAt: new Date().toISOString().split('T')[0],
