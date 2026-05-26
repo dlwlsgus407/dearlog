@@ -2,6 +2,7 @@ import { useState } from 'react'
 import ChildBottomNav from '../components/ChildBottomNav'
 import { useAuthStore } from '../store/authStore'
 import { useChildStore } from '../store/childStore'
+import { reformulateQuestion } from '../lib/agents/questionQueue'
 import type { QuestionPriority } from '../types/child'
 
 const PRIORITY_META: Record<QuestionPriority, { label: string; bg: string; text: string; dot: string }> = {
@@ -18,15 +19,59 @@ export default function ChildQuestionsScreen() {
   const [anonymous, setAnonymous] = useState(false)
   const [priority, setPriority] = useState<QuestionPriority>('normal')
   const [submitted, setSubmitted] = useState(false)
+  const [isReformulating, setIsReformulating] = useState(false)
+  const [previewText, setPreviewText] = useState<string | null>(null)
+  const [pendingOriginal, setPendingOriginal] = useState<string>('')
 
-  const handleSubmit = () => {
-    if (!text.trim()) return
+  const PRIORITY_NUM: Record<QuestionPriority, number> = { urgent: 3, normal: 2, interest: 1 }
+
+  const handleSubmit = async () => {
+    if (!text.trim() || isReformulating) return
+    setIsReformulating(true)
+    const original = text.trim()
+    try {
+      const result = await reformulateQuestion(original, PRIORITY_NUM[priority], anonymous, '인생 이야기')
+      if (result.sensitivityLevel === 'high') {
+        setPreviewText(result.reformulatedQuestion)
+        setPendingOriginal(original)
+        setIsReformulating(false)
+        return
+      }
+      addQuestion({
+        text: result.reformulatedQuestion,
+        originalText: original,
+        anonymous,
+        submittedBy: anonymous ? undefined : (userName || '자녀'),
+        priority,
+      })
+    } catch {
+      addQuestion({
+        text: original,
+        anonymous,
+        submittedBy: anonymous ? undefined : (userName || '자녀'),
+        priority,
+      })
+    } finally {
+      setIsReformulating(false)
+    }
+    setText('')
+    setAnonymous(false)
+    setPriority('normal')
+    setSubmitted(true)
+    setTimeout(() => setSubmitted(false), 2000)
+  }
+
+  const confirmPreview = () => {
+    if (!previewText) return
     addQuestion({
-      text: text.trim(),
+      text: previewText,
+      originalText: pendingOriginal,
       anonymous,
       submittedBy: anonymous ? undefined : (userName || '자녀'),
       priority,
     })
+    setPreviewText(null)
+    setPendingOriginal('')
     setText('')
     setAnonymous(false)
     setPriority('normal')
@@ -38,6 +83,34 @@ export default function ChildQuestionsScreen() {
 
   return (
     <div className="flex flex-col min-h-screen bg-[#F8F3EA]">
+      {/* Sensitivity preview modal */}
+      {previewText && (
+        <div className="fixed inset-0 z-50 flex items-end" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <div className="w-full rounded-t-3xl p-6 pb-10" style={{ backgroundColor: '#FFFDF8' }}>
+            <p className="text-[16px] font-bold text-[#3E3128] mb-1">이렇게 전달될 예정이에요</p>
+            <p className="text-[13px] text-[#7A6A5C] mb-4">민감한 표현이 있어 부드럽게 바꿨어요</p>
+            <div className="rounded-xl p-4 mb-5" style={{ backgroundColor: '#F2D9B8' }}>
+              <p className="text-[15px] text-[#3E3128] leading-relaxed">{previewText}</p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setPreviewText(null)}
+                className="flex-1 min-h-[48px] rounded-xl text-[15px] font-medium"
+                style={{ backgroundColor: '#E7DED2', color: '#7A6A5C' }}
+              >
+                취소
+              </button>
+              <button
+                onClick={confirmPreview}
+                className="flex-1 min-h-[48px] rounded-xl text-[15px] font-medium text-white"
+                style={{ backgroundColor: '#C8956C' }}
+              >
+                이대로 등록
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex-1 overflow-y-auto pb-24">
         {/* Header */}
         <div className="px-5 pt-14 pb-5">
@@ -115,14 +188,14 @@ export default function ChildQuestionsScreen() {
           {/* Submit */}
           <button
             onClick={handleSubmit}
-            disabled={!text.trim()}
+            disabled={!text.trim() || isReformulating}
             className="w-full min-h-[48px] rounded-xl text-[16px] font-medium transition-all duration-150 disabled:opacity-40"
             style={{
               backgroundColor: submitted ? '#6B8F71' : '#C8956C',
               color: 'white',
             }}
           >
-            {submitted ? '✓ 등록되었습니다' : '등록하기'}
+            {submitted ? '등록됐어요 ✓' : isReformulating ? '질문을 정리하고 있어요...' : '등록하기'}
           </button>
         </div>
 

@@ -2,8 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import BottomNav from '../components/BottomNav'
 import Button from '../components/Button'
+import { generateFollowUpQuestion } from '../lib/agents/interviewer'
+import { archiveTranscript } from '../lib/agents/archivist'
+import { verifyChunk } from '../lib/agents/verification'
 import { useInterviewStore } from '../store/interviewStore'
 import type { Chapter, Question } from '../types/interview'
+import type { Conflict } from '../types/agents'
+import type { Transcript } from '../types/interview'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -244,17 +249,27 @@ function ActiveCallView({
 }: {
   questions: QuestionItem[]
   callSeconds: number
-  onCallEnd: (count: number) => void
+  onCallEnd: (count: number, answeredTexts: { questionId: string; chapterId: string; chapterTitle: string; questionText: string; rawText: string }[]) => void
 }) {
   const { markQuestionCompleted } = useInterviewStore()
   const [qIdx, setQIdx] = useState(0)
   const [phase, setPhase] = useState<CallPhase>('entering')
   const [displayText, setDisplayText] = useState('')
   const [completedCount, setCompletedCount] = useState(0)
+  const [currentQuestion, setCurrentQuestion] = useState<string | null>(null)
+  const [isLoadingNext, setIsLoadingNext] = useState(false)
+  const answeredRef = useRef<{ questionId: string; chapterId: string; chapterTitle: string; questionText: string; rawText: string }[]>([])
+  const previousQuestionsRef = useRef<string[]>([])
 
   const currentQ = questions[qIdx]
+  const activeQuestion = currentQuestion ?? currentQ?.question.text ?? ''
   const demoText = getDemoResponse(currentQ?.question.id ?? '')
   const fmt = `${String(Math.floor(callSeconds / 60)).padStart(2, '0')}:${String(callSeconds % 60).padStart(2, '0')}`
+
+  // Reset generated question when moving to next base question
+  useEffect(() => {
+    setCurrentQuestion(null)
+  }, [qIdx])
 
   // Phase transitions: entering → listening → typing → answered
   useEffect(() => {
@@ -277,25 +292,60 @@ function ActiveCallView({
     return () => clearTimeout(t)
   }, [phase, displayText, demoText])
 
+  const handleFollowUp = async () => {
+    if (!currentQ || isLoadingNext) return
+    setIsLoadingNext(true)
+    previousQuestionsRef.current.push(activeQuestion)
+    try {
+      const result = await generateFollowUpQuestion(
+        displayText,
+        currentQ.chapter.title,
+        previousQuestionsRef.current
+      )
+      setCurrentQuestion(result.question)
+      setPhase('entering')
+      setDisplayText('')
+    } finally {
+      setIsLoadingNext(false)
+    }
+  }
+
   const handleNext = () => {
-    if (currentQ) markQuestionCompleted(currentQ.question.id)
+    if (currentQ) {
+      markQuestionCompleted(currentQ.question.id)
+      answeredRef.current.push({
+        questionId: currentQ.question.id,
+        chapterId: currentQ.chapter.id,
+        chapterTitle: currentQ.chapter.title,
+        questionText: activeQuestion,
+        rawText: displayText,
+      })
+    }
     const newCount = completedCount + 1
     setCompletedCount(newCount)
+    previousQuestionsRef.current = []
     if (qIdx + 1 < questions.length) {
       setQIdx(qIdx + 1)
       setPhase('entering')
       setDisplayText('')
     } else {
-      onCallEnd(newCount)
+      onCallEnd(newCount, answeredRef.current)
     }
   }
 
   const handleEndCall = () => {
     if (phase === 'answered' && currentQ) {
       markQuestionCompleted(currentQ.question.id)
-      onCallEnd(completedCount + 1)
+      answeredRef.current.push({
+        questionId: currentQ.question.id,
+        chapterId: currentQ.chapter.id,
+        chapterTitle: currentQ.chapter.title,
+        questionText: activeQuestion,
+        rawText: displayText,
+      })
+      onCallEnd(completedCount + 1, answeredRef.current)
     } else {
-      onCallEnd(completedCount)
+      onCallEnd(completedCount, answeredRef.current)
     }
   }
 
@@ -332,7 +382,7 @@ function ActiveCallView({
           <span className="text-[12px] font-medium" style={{ color: '#34C759' }}>지금 기록 중</span>
         </div>
         <p className="text-[18px] font-medium text-white leading-relaxed mb-3">
-          {currentQ?.question.text}
+          {activeQuestion}
         </p>
         {phase === 'entering' && (
           <p className="text-[14px]" style={{ color: 'rgba(255,255,255,0.35)' }}>잠시 후 질문이 시작됩니다...</p>
@@ -352,6 +402,15 @@ function ActiveCallView({
               <span className="inline-block w-0.5 h-4 ml-0.5 animate-pulse" style={{ backgroundColor: 'rgba(255,255,255,0.8)', verticalAlign: 'middle' }} />
             )}
           </p>
+        )}
+        {phase === 'answered' && (
+          <button
+            onClick={handleNext}
+            className="mt-3 w-full py-2.5 rounded-xl text-[14px] font-medium transition-all active:opacity-70"
+            style={{ backgroundColor: 'rgba(52,199,89,0.15)', color: '#34C759', border: '1px solid rgba(52,199,89,0.3)' }}
+          >
+            {qIdx + 1 < questions.length ? '다음 질문으로 →' : '통화 완료'}
+          </button>
         )}
       </div>
 
@@ -387,7 +446,12 @@ function ActiveCallView({
         </div>
         {/* Row 2 */}
         <div className="flex justify-between mb-8">
-          {gridBtn('다음 질문', <DkNextIcon />, phase === 'answered' ? handleNext : undefined, phase === 'answered')}
+          {gridBtn(
+            isLoadingNext ? '생성 중...' : '꼬리질문',
+            <DkNextIcon />,
+            phase === 'answered' && !isLoadingNext ? handleFollowUp : undefined,
+            phase === 'answered' && !isLoadingNext
+          )}
           <div className="flex flex-col items-center gap-2">
             <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
               <span
@@ -525,21 +589,29 @@ function VoiceView({
 
 // ─── Screen 5: Done ───────────────────────────────────────────────────────────
 
+type AnsweredItem = { questionId: string; chapterId: string; chapterTitle: string; questionText: string; rawText: string }
+
 function DoneView({
   answeredCount,
   callSeconds,
   isPhoneMode,
+  answeredItems,
   onViewTranscript,
   onGoHome,
 }: {
   answeredCount: number
   callSeconds: number
   isPhoneMode: boolean
+  answeredItems: AnsweredItem[]
   onViewTranscript: () => void
   onGoHome: () => void
 }) {
+  const { transcripts, addTranscript } = useInterviewStore()
   const [bg, setBg] = useState('#1C1C1E')
   const [visible, setVisible] = useState(false)
+  const [showToast, setShowToast] = useState(false)
+  const [conflicts, setConflicts] = useState<Conflict[]>([])
+  const [showConflict, setShowConflict] = useState(false)
 
   useEffect(() => {
     const t1 = setTimeout(() => setBg('#F8F3EA'), 300)
@@ -547,13 +619,93 @@ function DoneView({
     return () => { clearTimeout(t1); clearTimeout(t2) }
   }, [])
 
+  // Archive chain: archiveTranscript → verifyChunk → addTranscript
+  useEffect(() => {
+    if (answeredItems.length === 0) return
+    const existingChunks = transcripts
+      .filter((t: Transcript) => t.chunk)
+      .map((t: Transcript) => ({ ...t.chunk!, chunkId: t.id }))
+
+    const run = async () => {
+      const allConflicts: Conflict[] = []
+      for (const item of answeredItems) {
+        const archiveResult = await archiveTranscript(item.rawText, item.questionText, item.chapterId)
+        const chunkWithId = { ...archiveResult.chunk, chunkId: archiveResult.chunkId }
+        const verifyResult = await verifyChunk(chunkWithId, existingChunks)
+        if (verifyResult.status === 'FLAG') {
+          allConflicts.push(...verifyResult.conflicts)
+        }
+        addTranscript({
+          id: archiveResult.chunkId,
+          questionId: item.questionId,
+          questionText: item.questionText,
+          chapterId: item.chapterId,
+          chapterTitle: item.chapterTitle,
+          originalText: item.rawText,
+          aiSummary: archiveResult.chunk.clean,
+          recordedAt: new Date().toISOString().split('T')[0],
+          chunk: archiveResult.chunk,
+        })
+        existingChunks.push(chunkWithId)
+      }
+      if (allConflicts.length > 0) {
+        setConflicts(allConflicts)
+        setShowConflict(true)
+      } else {
+        setShowToast(true)
+        setTimeout(() => setShowToast(false), 1500)
+      }
+    }
+    run()
+  }, [])
+
   const fmt = `${String(Math.floor(callSeconds / 60)).padStart(2, '0')}:${String(callSeconds % 60).padStart(2, '0')}`
+
+  const CONFLICT_LABELS: Record<string, string> = {
+    TIME_CONFLICT: '시간 충돌',
+    PERSON_CONFLICT: '인물 충돌',
+    FACT_CONFLICT: '사실 충돌',
+    DUPLICATE: '중복 기록',
+  }
 
   return (
     <div
       className="flex flex-col min-h-screen"
       style={{ backgroundColor: bg, transition: 'background-color 0.6s ease' }}
     >
+      {/* Toast */}
+      {showToast && (
+        <div
+          className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-full text-white text-[14px] font-medium"
+          style={{ backgroundColor: '#6B8F71' }}
+        >
+          저장됨 ✓
+        </div>
+      )}
+
+      {/* Conflict card */}
+      {showConflict && (
+        <div className="fixed inset-x-5 top-20 z-50 rounded-2xl p-4" style={{ backgroundColor: '#FFFDF8', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
+          <p className="text-[15px] font-bold text-[#3E3128] mb-2">⚠️ 기록 검토 필요</p>
+          {conflicts.map((c, i) => (
+            <div key={i} className="mb-2 last:mb-0">
+              <span className="text-[11px] font-medium text-[#C8956C] bg-[#F4DDD0] px-2 py-0.5 rounded-full mr-2">
+                {CONFLICT_LABELS[c.conflictType] ?? c.conflictType}
+              </span>
+              <p className="text-[13px] text-[#3E3128] mt-1">{c.description}</p>
+              <p className="text-[12px] text-[#7A6A5C]">{c.recommendedAction}</p>
+            </div>
+          ))}
+          <button
+            onClick={() => { setShowConflict(false); setShowToast(true); setTimeout(() => setShowToast(false), 1500) }}
+            className="mt-3 w-full py-2.5 rounded-xl text-[14px] font-medium text-white"
+            style={{ backgroundColor: '#C8956C' }}
+          >
+            확인 (기록은 저장됨)
+          </button>
+        </div>
+      )}
+
       <div
         className="flex-1 flex flex-col items-center justify-center px-5 gap-7"
         style={{ opacity: visible ? 1 : 0, transition: 'opacity 0.5s ease 0.3s' }}
@@ -619,6 +771,7 @@ export default function ParentInterviewScreen() {
   const [callSeconds, setCallSeconds] = useState(0)
   const [finalCallSeconds, setFinalCallSeconds] = useState(0)
   const [answeredCount, setAnsweredCount] = useState(0)
+  const [answeredItems, setAnsweredItems] = useState<AnsweredItem[]>([])
   const callTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // First 3 incomplete questions for the call session
@@ -649,13 +802,23 @@ export default function ParentInterviewScreen() {
     setScreen(mode === 'phone' ? 'incoming' : 'voice')
   }
 
-  const handleCallEnd = (count: number) => {
+  const handleCallEnd = (count: number, items: AnsweredItem[]) => {
     setAnsweredCount(count)
+    setAnsweredItems(items)
     setFinalCallSeconds(callSeconds)
     setScreen('done')
   }
 
-  const handleVoiceComplete = () => {
+  const handleVoiceComplete = (questionId: string) => {
+    if (nextItem) {
+      setAnsweredItems([{
+        questionId,
+        chapterId: nextItem.chapter.id,
+        chapterTitle: nextItem.chapter.title,
+        questionText: nextItem.question.text,
+        rawText: getDemoResponse(questionId),
+      }])
+    }
     setAnsweredCount(1)
     setFinalCallSeconds(0)
     setScreen('done')
@@ -700,6 +863,7 @@ export default function ParentInterviewScreen() {
           answeredCount={answeredCount}
           callSeconds={finalCallSeconds}
           isPhoneMode={isPhoneMode}
+          answeredItems={answeredItems}
           onViewTranscript={() => navigate('/parent/transcript')}
           onGoHome={() => navigate('/parent')}
         />

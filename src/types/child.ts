@@ -4,6 +4,7 @@ export type QuestionStatus = 'pending' | 'answered'
 export interface ChildQuestion {
   id: string
   text: string
+  originalText?: string
   anonymous: boolean
   submittedBy?: string
   priority: QuestionPriority

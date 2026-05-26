@@ -64,7 +64,7 @@ export const DEMO_PHOTO_TEMPLATES = [
 interface ChildState {
   questions: ChildQuestion[]
   photos: DemoPhoto[]
-  addQuestion: (q: { text: string; anonymous: boolean; submittedBy?: string; priority: QuestionPriority }) => void
+  addQuestion: (q: { text: string; originalText?: string; anonymous: boolean; submittedBy?: string; priority: QuestionPriority }) => void
   addPhoto: (p: { caption: string; generatedQuestions: string[] }) => void
   markQuestionAsAddedFromPhoto: (photoId: string, questionText: string) => void
 }
@@ -74,12 +74,16 @@ export const useChildStore = create<ChildState>()(
     (set) => ({
       questions: INITIAL_QUESTIONS,
       photos: [],
-      addQuestion: (q) =>
+      addQuestion: ({ text, originalText, anonymous, submittedBy, priority }) =>
         set((state) => ({
           questions: [
             {
-              ...q,
               id: `cq_${Date.now()}`,
+              text,
+              originalText,
+              anonymous,
+              submittedBy,
+              priority,
               status: 'pending' as const,
               submittedAt: new Date().toISOString().split('T')[0],
             },

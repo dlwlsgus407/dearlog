@@ -2,8 +2,27 @@ import { useMemo, useState } from 'react'
 import BottomNav from '../components/BottomNav'
 import { useInterviewStore } from '../store/interviewStore'
 import type { Transcript } from '../types/interview'
+import type { ReliabilityLabel } from '../types/agents'
 
 type ViewMode = 'original' | 'ai'
+
+const RELIABILITY_COLOR: Record<ReliabilityLabel, string> = {
+  CONFIRMED: '#6B8F71',
+  ESTIMATED: '#C8956C',
+  UNVERIFIED: '#B4AFA9',
+}
+const RELIABILITY_LABEL: Record<ReliabilityLabel, string> = {
+  CONFIRMED: '확인됨',
+  ESTIMATED: '추정',
+  UNVERIFIED: '미확인',
+}
+
+const NER_META = [
+  { key: 'persons' as const, emoji: '🟤', label: '인물' },
+  { key: 'places'  as const, emoji: '🟢', label: '장소' },
+  { key: 'times'   as const, emoji: '🔵', label: '시간' },
+  { key: 'events'  as const, emoji: '🟠', label: '사건' },
+]
 
 function TranscriptDetail({
   transcript,
@@ -69,19 +88,70 @@ function TranscriptDetail({
             <p className="mt-4 text-[12px] text-[#7A6A5C]">녹음일: {transcript.recordedAt}</p>
           </div>
         ) : (
-          <div className="rounded-2xl p-5" style={{ backgroundColor: '#FFFDF8', boxShadow: '0 2px 12px rgba(139,94,60,0.07)' }}>
-            <div className="flex items-center gap-2 mb-3">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="#8B5E3C" strokeWidth="1.8" strokeLinejoin="round" />
-                <path d="M2 17L12 22L22 17" stroke="#8B5E3C" strokeWidth="1.8" strokeLinejoin="round" />
-                <path d="M2 12L12 17L22 12" stroke="#8B5E3C" strokeWidth="1.8" strokeLinejoin="round" />
-              </svg>
-              <span className="text-[13px] font-medium text-[#8B5E3C]">AI가 구조화한 정리본입니다</span>
+          <div className="flex flex-col gap-4">
+            {/* Conflict banner */}
+            {transcript.chunk && (
+              <div
+                className="rounded-xl px-4 py-3 flex items-center gap-2"
+                style={{ backgroundColor: RELIABILITY_COLOR[transcript.chunk.reliabilityLabel] + '22' }}
+              >
+                <span
+                  className="text-[12px] font-bold px-2 py-0.5 rounded-full text-white"
+                  style={{ backgroundColor: RELIABILITY_COLOR[transcript.chunk.reliabilityLabel] }}
+                >
+                  {RELIABILITY_LABEL[transcript.chunk.reliabilityLabel]}
+                </span>
+                {transcript.chunk.timelinePosition && (
+                  <span className="text-[12px] text-[#7A6A5C]">{transcript.chunk.timelinePosition}</span>
+                )}
+              </div>
+            )}
+
+            {/* Clean text */}
+            <div className="rounded-2xl p-5" style={{ backgroundColor: '#FFFDF8', boxShadow: '0 2px 12px rgba(139,94,60,0.07)' }}>
+              <div className="flex items-center gap-2 mb-3">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="#8B5E3C" strokeWidth="1.8" strokeLinejoin="round" />
+                  <path d="M2 17L12 22L22 17" stroke="#8B5E3C" strokeWidth="1.8" strokeLinejoin="round" />
+                  <path d="M2 12L12 17L22 12" stroke="#8B5E3C" strokeWidth="1.8" strokeLinejoin="round" />
+                </svg>
+                <span className="text-[13px] font-medium text-[#8B5E3C]">AI가 구조화한 정리본입니다</span>
+              </div>
+              <p className="text-[16px] text-[#3E3128] leading-relaxed whitespace-pre-wrap">
+                {transcript.chunk?.clean ?? transcript.aiSummary}
+              </p>
             </div>
-            <p className="text-[16px] text-[#3E3128] leading-relaxed whitespace-pre-wrap">
-              {transcript.aiSummary}
-            </p>
-            <div className="mt-4 pt-3 border-t border-[#E7DED2]">
+
+            {/* NER tags */}
+            {transcript.chunk && (
+              <div className="rounded-2xl p-4" style={{ backgroundColor: '#FFFDF8', boxShadow: '0 2px 12px rgba(139,94,60,0.07)' }}>
+                <p className="text-[13px] font-medium text-[#7A6A5C] mb-3">태그된 정보</p>
+                <div className="flex flex-col gap-2">
+                  {NER_META.map(({ key, emoji, label }) => {
+                    const items = transcript.chunk!.tags.ner[key]
+                    if (items.length === 0) return null
+                    return (
+                      <div key={key} className="flex items-start gap-2">
+                        <span className="text-[12px] shrink-0 mt-0.5">{emoji} {label}</span>
+                        <div className="flex flex-wrap gap-1">
+                          {items.map((item) => (
+                            <span
+                              key={item}
+                              className="text-[11px] px-2 py-0.5 rounded-full"
+                              style={{ backgroundColor: '#F2D9B8', color: '#8B5E3C' }}
+                            >
+                              {item}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="px-1">
               <p className="text-[12px] text-[#7A6A5C]">
                 원문은 변경되지 않으며, AI 정리본은 참고용입니다.
               </p>

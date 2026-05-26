@@ -108,13 +108,30 @@ interface InterviewState {
   chapters: Chapter[]
   transcripts: Transcript[]
   markQuestionCompleted: (questionId: string, rawText?: string) => void
+  addTranscript: (transcript: Transcript) => void
+  getChapterCompletionRate: (chapterId: string) => number
+  isChapterReady: (chapterId: string) => boolean
 }
 
 export const useInterviewStore = create<InterviewState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       chapters: INITIAL_CHAPTERS,
       transcripts: INITIAL_TRANSCRIPTS,
+      addTranscript: (transcript: Transcript) =>
+        set((state) => ({ transcripts: [...state.transcripts, transcript] })),
+      getChapterCompletionRate: (chapterId: string): number => {
+        const ch = get().chapters.find((c) => c.id === chapterId)
+        if (!ch || ch.questions.length === 0) return 0
+        const done = ch.questions.filter((q) => q.completed).length
+        return done / ch.questions.length
+      },
+      isChapterReady: (chapterId: string): boolean => {
+        const ch = get().chapters.find((c) => c.id === chapterId)
+        if (!ch || ch.questions.length === 0) return false
+        const done = ch.questions.filter((q) => q.completed).length
+        return done / ch.questions.length >= 0.7
+      },
       markQuestionCompleted: (questionId, rawText) =>
         set((state) => {
           let questionText = ''
