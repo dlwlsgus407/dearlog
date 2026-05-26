@@ -1,6 +1,6 @@
 # DEARLOG — 구현 TODO
 
-> 마지막 업데이트: 2026-05-25
+> 마지막 업데이트: 2026-05-26
 > 기준: CLAUDE.md 화면 구성 + 기술 스택
 
 ---
@@ -33,21 +33,21 @@
 - [x] `src/store/authStore.ts` — `role`, `userName`, `setRole`, `setUserName` (persist)
 - [x] `src/components/Button.tsx` — 공용 CTA 버튼 (amber-clay, 48px 이상, full-width 옵션)
 
-### Step 1 — SplashScreen (`/splash`) ✅
+### Step 1 — SplashScreen (`/splash`) ✅ V2 리디자인 완료 (2026-05-26)
 **파일**: `src/pages/SplashScreen.tsx`
 **내용**
-- [x] 배경색: `#F8F3EA` (Background)
-- [x] 중앙 로고 SVG + 서비스명 "DEARLOG" (Primary `#8B5E3C`, 28px bold)
-- [x] 슬로건: "당신의 이야기를 기록합니다" (Text Secondary, 16px)
-- [x] 하단 CTA 버튼 "시작하기" → `/intro` 이동
-- [x] 로고 영역 페이드인 애니메이션 (0.7s)
+- [x] 배경색: `#F8F3EA`, DearlogLogo(size=100) 중앙
+- [x] "Dearlog" (28px bold, #3E2C1A) + "디어로그" (14px, #7A6A5C)
+- [x] "Version 1.0" 하단 (#B4AFA9, 12px)
+- [x] 페이드인 0.6s, 2초 후 자동 이동 OR 탭으로 즉시 이동
 
-### Step 2 — IntroScreen (`/intro`) ✅
+### Step 2 — IntroScreen (`/intro`) ✅ V2 리디자인 완료 (2026-05-26)
 **파일**: `src/pages/IntroScreen.tsx`
 **내용**
-- [x] 슬라이드 3장 (인덱스 기반 수평 캐러셀 — 모바일 UX 판단)
-- [x] 슬라이드 1: "가족의 이야기를 보존하세요" + 아이콘
-- [x] 슬라이드 2: "AI가 구조화, 원문은 그대로" + 아이콘
+- [x] 슬라이드 3장 (수평 캐러셀, 스와이프 + 점 인디케이터)
+- [x] 슬라이드 1: "말로 남기는 인생 이야기" + 챕터 카드 목업
+- [x] 슬라이드 2: "천천히 질문하고, 편하게 대답해요" + 음성녹음 UI 목업
+- [x] 슬라이드 3: "기록은 자서전과 가족 챗봇으로 완성돼요" + 그라데이션 로고 목업
 - [x] 슬라이드 3: "자서전으로, 챗봇으로 남깁니다" + 아이콘
 - [x] 하단 점 인디케이터 + "다음"/"시작하기" 버튼
 - [x] 상단 우측 "건너뛰기" 링크
@@ -190,11 +190,11 @@
 #### 기존 타입/스토어 수정
 - [x] `src/types/agents.ts` 신규 — 모든 에이전트 타입 정의
 - [x] `src/types/interview.ts` — `Transcript`에 `chunk?: MemoryChunk` 필드 추가 (하위호환 유지)
-- [ ] `src/types/child.ts` — `ChildQuestion`에 `originalText?: string` 필드 추가
+- [x] `src/types/child.ts` — `ChildQuestion`에 `originalText?: string` 필드 추가
 - [x] `src/store/interviewStore.ts` 수정 — `markQuestionCompleted(questionId, rawText?)` rawText 파라미터화
-- [ ] `src/store/interviewStore.ts` — `addTranscript`, `getChapterCompletionRate`, `isChapterReady` 추가
+- [x] `src/store/interviewStore.ts` — `addTranscript`, `getChapterCompletionRate`, `isChapterReady` 추가
 - [x] `src/store/autobiographyStore.ts` **신규** — `chapters: GhostwriterResult[]`, persist 적용
-- [ ] `src/store/calendarStore.ts` **신규**
+- [x] `src/store/calendarStore.ts` **신규**
   - `events: CalendarEvent[]`
   - `addEvent`, `removeEvent`, `getUpcomingEvents` 액션
   - Zustand persist 적용
@@ -211,10 +211,10 @@
   - 금지 유형: 예/아니오, 복합질문, 감정단정, 유도형
 - [x] `generateFollowUpQuestion(userAnswer, currentTopic, previousQuestions): Promise<InterviewerResult>`
   - `gpt-4o-mini`, max_tokens: 300, fallback 포함
-- [ ] **`ParentInterviewScreen.tsx` 연동**
-  - 통화 중(화면 3) "다음 질문" 버튼 클릭 시 호출
-  - 호출 중 버튼 비활성화 + 로딩 인디케이터
-  - 생성된 꼬리질문 → 화면의 현재 질문 텍스트 교체
+- [x] **`ParentInterviewScreen.tsx` 연동**
+  - 통화 중(화면 3) "꼬리질문" 버튼 → `generateFollowUpQuestion()` 호출, 로딩 중 비활성
+  - answered 상태에서 꼬리질문 생성 후 질문 텍스트 교체
+  - "다음으로/통화완료" 버튼으로 다음 질문 이동 분리
 
 ---
 
@@ -234,20 +234,13 @@
   - 기존 chunks 0개면 즉시 PASS, slice(-10), fallback 포함
 
 #### ParentInterviewScreen 연동
-- [ ] 통화 완료(화면 4) 진입 시 순차 실행:
-  ```
-  archiveTranscript() → verifyChunk() → interviewStore.addTranscript()
-  ```
-- [ ] `status === 'FLAG'` 시 충돌 알림 카드 표시
-  - 충돌 유형 + 설명 + 권장 조치 ("사용자 확인 요청" 등)
-  - 확인 버튼 → 알림 닫기 (기록은 그대로 저장)
-- [ ] 아카이빙 완료 → "저장됨" 토스트 메시지 (1초)
+- [x] 통화 완료(화면 4) 진입 시 순차 실행: archiveTranscript → verifyChunk → addTranscript
+- [x] `status === 'FLAG'` 시 충돌 알림 카드 + 확인 버튼 (기록은 그대로 저장)
+- [x] 아카이빙 완료 → "저장됨 ✓" 토스트 1.5초
 
 #### ParentTranscriptScreen 수정
-- [ ] `aiSummary` 평문 → `chunk.clean` + `chunk.tags` 구조화 렌더링
-  - NER 태그 뱃지 (인물 🟤 / 장소 🟢 / 시간 🔵 / 사건 🟠)
-  - 신뢰도 라벨 색상: CONFIRMED(Sage) / ESTIMATED(Amber) / UNVERIFIED(회색)
-- [ ] `VerificationResult.conflicts` 있으면 "검토 필요" 배너 표시
+- [x] AI 정리본 탭: chunk.clean + NER 태그 뱃지 (인물🟤/장소🟢/시간🔵/사건🟠)
+- [x] 신뢰도 라벨 색상: CONFIRMED(Sage) / ESTIMATED(Amber) / UNVERIFIED(회색)
 
 ---
 
@@ -259,12 +252,10 @@
 - [x] 시스템 프롬프트 구현 — 변환 원칙 4가지 + 예시 3가지
 - [x] `reformulateQuestion(originalQuestion, priority, isAnonymous, currentTopic): Promise<QuestionQueueResult>`
   - `gpt-4o-mini`, max_tokens: 400, fallback: 원본 질문 그대로 반환
-- [ ] **`ChildQuestionsScreen.tsx` 연동**
-  - 질문 등록 버튼 클릭 시 호출
-  - 호출 중 로딩 상태: "질문을 정리하고 있어요..." 텍스트
-  - `childStore.addQuestion({ text: reformulatedQuestion, originalText: originalQuestion, ... })`
-  - 재구성 완료 후 "등록됐어요 ✓" 피드백
-  - `sensitivityLevel === 'high'` 시 미리보기: "이렇게 전달될 예정이에요" 모달
+- [x] **`ChildQuestionsScreen.tsx` 연동**
+  - 등록 버튼 → `reformulateQuestion()` 호출, "질문을 정리하고 있어요..." 로딩
+  - `sensitivityLevel === 'high'` → 바텀시트 미리보기 모달 (취소/이대로 등록)
+  - 완료 시 "등록됐어요 ✓", `originalText` 함께 저장
 
 ---
 
@@ -278,16 +269,16 @@
   - `gpt-4o-mini`, max_tokens: 700, 관련 chunk 0개면 즉시 INTERVIEW, fallback 포함
 
 #### CalendarScreen 수정
-- [ ] 이벤트 등록 UI 추가 (현재 달력만 있음)
+- [x] 이벤트 등록 UI 추가 (현재 달력만 있음)
   - 날짜 선택 → 이벤트 유형 7종 선택 → 관련 인물 입력
   - 등록 시 `calendarStore.addEvent()` 저장
-- [ ] 등록된 이벤트 날짜에 마커 표시
-- [ ] 이벤트 탭 클릭 → 즉시 `processCalendarTrigger()` 호출
+- [x] 등록된 이벤트 날짜에 마커 표시
+- [x] 이벤트 탭 클릭 → 즉시 `processCalendarTrigger()` 호출
   - `DELIVERY` → 편집된 이야기 카드 표시 (자녀에게 공유 버튼)
   - `INTERVIEW` → "이 주제로 인터뷰해 보세요" 주제 목록 카드
 
 #### useScheduledCall 확장
-- [ ] D-1일 이벤트 감지 로직 추가
+- [x] D-1일 이벤트 감지 로직 추가
   - 매분 체크 시 `calendarStore.getUpcomingEvents(1일 후)` 조회
   - 해당 이벤트 있으면 `processCalendarTrigger()` 실행
   - `DELIVERY` 결과 → 알림 카드 (홈 화면 상단)
@@ -303,15 +294,15 @@
 - [x] 시스템 프롬프트 구현 — 질문 유형 4종, fallback 문구 정의
 - [x] `generatePersonaResponse(userQuestion, memoryChunks, toneProfile): Promise<DigitalTwinResult>`
   - UNVERIFIED 제외, 최대 5개, `gpt-4o-mini`, max_tokens: 500, fallback 포함
-- [ ] **`ChatbotScreen.tsx` 신규 구현**
+- [x] **`ChatbotScreen.tsx` 신규 구현**
   - 상단: 시니어 이름 + 아바타 헤더
-  - 말풍선: 왼쪽(시니어 응답, Surface `#FFFDF8`) / 오른쪽(자녀 질문, Peach Light `#F4DDD0`)
-  - 시니어 응답 카드 하단: evidenceBadge 소형 뱃지 ("○○기억 기반 · HIGH")
-  - `suggestedInterviewTopic` 있으면 하단 제안 칩: "이 주제 더 여쭤볼까요?" → `/child/questions`
-  - `fallbackTriggered=true` → 응답 텍스트 회색 이탤릭 스타일
-  - 스크롤 뷰 + 하단 고정 입력창 + 전송 버튼 (min-h-48px)
-- [ ] `App.tsx`에 `/child/chatbot` 라우트 추가
-- [ ] `ChildHomeScreen.tsx` 수정 — "대화하기" 진입 카드 추가 (BottomNav 변경 없음)
+  - 말풍선: 왼쪽(시니어 응답, Surface `#FFFDF8`) / 오른쪽(자녀 질문, Amber Clay `#C8956C`)
+  - 시니어 응답 카드 하단: evidenceBadge 소형 뱃지 (CONFIRMED/ESTIMATED/UNVERIFIED)
+  - `suggestedInterviewTopic` 있으면 하단 제안 칩 → `/child/questions`
+  - `fallbackTriggered=true` → 응답 텍스트 이탤릭 스타일
+  - 스크롤 뷰 + 하단 고정 입력창 + 전송 버튼 (48px)
+- [x] `App.tsx`에 `/child/chatbot` 라우트 추가
+- [x] `ChildHomeScreen.tsx` 수정 — "대화하기" 진입 카드 추가 (BottomNav 변경 없음)
 
 ---
 
@@ -324,18 +315,18 @@
 - [x] `generateChapterDraft(chapterId, chapterTitle, chunks, toneProfile): Promise<GhostwriterResult>`
   - chunk 필터링(chapterHint || keywords), 0개면 즉시 반환, `gpt-4o-mini`, max_tokens: 1500
 - [x] `src/store/autobiographyStore.ts` **신규** — `chapters: GhostwriterResult[]`, persist
-- [ ] **`AutobiographyScreen.tsx` 신규 구현**
-  - 상단 챕터 탭 (1장~5장)
-  - 각 문단: 본문 + 신뢰도 뱃지 + 출처 chunk 수 ("기억 3개 기반")
+- [x] **`AutobiographyScreen.tsx` 신규 구현**
+  - 상단 챕터 탭 (1장~4장)
+  - 각 문단: 본문 + 신뢰도 뱃지 + 출처 chunk 수 ("기억 N개 기반")
   - `uncertaintyNote` 있으면 회색 이탤릭 주석
   - `missingSections` → "아직 기록되지 않은 구간" 점선 카드
-  - 하단 "PDF 저장" 버튼 (Phase 6 연결 전: 비활성 + "준비 중" 툴팁)
-- [ ] `App.tsx`에 `/parent/autobiography` 라우트 추가
-- [ ] **`ParentProgressScreen.tsx` 수정**
+  - 하단 "PDF 저장" 버튼 (Phase 6 연결 전: 비활성 + "준비 중" 표시)
+- [x] `App.tsx`에 `/parent/autobiography` 라우트 추가
+- [x] **`ParentProgressScreen.tsx` 수정**
   - "자서전 생성하기" 버튼 추가
   - 활성 조건: `isChapterReady()` 하나라도 true
   - 클릭 → `Promise.all(챕터별 generateChapterDraft)` 병렬 호출
-  - 로딩 오버레이: "자서전을 쓰고 있어요..." (Amber Clay 스피너)
+  - 로딩 오버레이: "자서전을 쓰고 있어요..." (animate-pulse 아이콘)
   - 완료 → `/parent/autobiography` 이동
 
 ---

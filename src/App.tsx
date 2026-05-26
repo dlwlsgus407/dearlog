@@ -14,6 +14,8 @@ import ChildProgressScreen from './pages/ChildProgressScreen'
 import ChildChaptersScreen from './pages/ChildChaptersScreen'
 import MyPageScreen from './pages/MyPageScreen'
 import CalendarScreen from './pages/CalendarScreen'
+import ChatbotScreen from './pages/ChatbotScreen'
+import AutobiographyScreen from './pages/AutobiographyScreen'
 import { useScheduledCall } from './hooks/useScheduledCall'
 
 function ScheduledCallMonitor() {
@@ -43,6 +45,8 @@ export default function App() {
           <Route path="/child/chapters" element={<ChildChaptersScreen />} />
           <Route path="/mypage" element={<MyPageScreen />} />
           <Route path="/calendar" element={<CalendarScreen />} />
+          <Route path="/child/chatbot" element={<ChatbotScreen />} />
+          <Route path="/parent/autobiography" element={<AutobiographyScreen />} />
         </Routes>
       </div>
     </BrowserRouter>

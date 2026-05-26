@@ -1,7 +1,13 @@
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import BottomNav from '../components/BottomNav'
 import { useInterviewStore } from '../store/interviewStore'
+import { useAutobiographyStore } from '../store/autobiographyStore'
+import { generateChapterDraft } from '../lib/agents/ghostwriter'
 import type { Chapter } from '../types/interview'
+import type { ToneProfile } from '../types/agents'
+
+const DEFAULT_TONE: ToneProfile = { name: '따뜻한 구어체', patterns: ['음...', '그래서', '참'] }
 
 const AUTOBIOGRAPHY_THRESHOLD = 0.8
 
@@ -106,7 +112,30 @@ function ChapterCard({ chapter }: { chapter: Chapter }) {
 }
 
 export default function ParentProgressScreen() {
-  const { chapters } = useInterviewStore()
+  const navigate = useNavigate()
+  const { chapters, transcripts, isChapterReady } = useInterviewStore()
+  const { setChapter } = useAutobiographyStore()
+  const [isGenerating, setIsGenerating] = useState(false)
+
+  const anyChapterReady = chapters.some((ch) => isChapterReady(ch.id))
+
+  const handleGenerateAutobiography = async () => {
+    setIsGenerating(true)
+    const memoryChunks = transcripts
+      .filter((t) => t.chunk)
+      .map((t) => ({ ...t.chunk!, chunkId: t.id }))
+    try {
+      const results = await Promise.all(
+        chapters.map((ch) =>
+          generateChapterDraft(ch.id, ch.title, memoryChunks, DEFAULT_TONE)
+        )
+      )
+      results.forEach((r) => setChapter(r))
+      navigate('/parent/autobiography')
+    } finally {
+      setIsGenerating(false)
+    }
+  }
 
   const { totalQuestions, completedQuestions } = useMemo(() => {
     let total = 0
@@ -179,6 +208,44 @@ export default function ParentProgressScreen() {
       </div>
 
       <BottomNav />
+
+      {/* Generate autobiography button */}
+      <div
+        className="fixed bottom-20 left-1/2 -translate-x-1/2 w-full max-w-[390px] px-5"
+        style={{ pointerEvents: 'none' }}
+      >
+        <button
+          onClick={handleGenerateAutobiography}
+          disabled={!anyChapterReady || isGenerating}
+          className="w-full h-14 rounded-2xl text-[16px] font-bold transition-all active:opacity-70 disabled:opacity-40"
+          style={{
+            backgroundColor: '#C8956C',
+            color: '#FFFDF8',
+            pointerEvents: 'auto',
+            boxShadow: '0 4px 20px rgba(200,149,108,0.4)',
+          }}
+        >
+          {isGenerating ? '자서전을 쓰고 있어요...' : '자서전 생성하기'}
+        </button>
+      </div>
+
+      {/* Loading overlay */}
+      {isGenerating && (
+        <div className="fixed inset-0 flex flex-col items-center justify-center z-50" style={{ backgroundColor: 'rgba(248,243,234,0.92)' }}>
+          <div
+            className="w-20 h-20 rounded-3xl flex items-center justify-center mb-5"
+            style={{ backgroundColor: '#C8956C' }}
+          >
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" className="animate-pulse">
+              <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="#FFFDF8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M2 17L12 22L22 17" stroke="#FFFDF8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M2 12L12 17L22 12" stroke="#FFFDF8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <p className="text-[18px] font-bold text-[#3E3128] mb-2">자서전을 쓰고 있어요</p>
+          <p className="text-[14px] text-[#7A6A5C]">부모님의 이야기를 정리하는 중입니다...</p>
+        </div>
+      )}
     </div>
   )
 }

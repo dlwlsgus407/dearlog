@@ -156,6 +156,35 @@ export default function ChildHomeScreen() {
           </button>
         </div>
 
+        {/* Chat with parent */}
+        <div
+          className="rounded-2xl p-5 mb-5"
+          style={{ backgroundColor: '#FFFDF8', boxShadow: '0 2px 12px rgba(139,94,60,0.08)' }}
+        >
+          <div className="flex items-center gap-4">
+            <div
+              className="w-14 h-14 rounded-2xl flex-shrink-0 flex items-center justify-center"
+              style={{ backgroundColor: '#EBC7A6' }}
+            >
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="8" r="4" fill="#8B5E3C" />
+                <path d="M4 20C4 16.134 7.582 13 12 13C16.418 13 20 16.134 20 20" stroke="#8B5E3C" strokeWidth="1.8" strokeLinecap="round" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <h2 className="text-[16px] font-bold text-[#3E3128] mb-0.5">부모님과 대화하기</h2>
+              <p className="text-[13px] text-[#7A6A5C]">기억 아카이브를 바탕으로 답해드려요</p>
+            </div>
+          </div>
+          <button
+            onClick={() => navigate('/child/chatbot')}
+            className="mt-4 w-full h-12 rounded-xl text-[15px] font-bold active:opacity-70"
+            style={{ backgroundColor: '#C8956C', color: '#FFFDF8' }}
+          >
+            대화하기
+          </button>
+        </div>
+
         {/* My questions summary */}
         <div
           className="rounded-2xl p-5 mb-5"
