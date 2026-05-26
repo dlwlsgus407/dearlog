@@ -1,6 +1,9 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { usePDF } from '@react-pdf/renderer'
 import { useAutobiographyStore } from '../store/autobiographyStore'
+import { useAuthStore } from '../store/authStore'
+import { AutobiographyPDF } from '../components/AutobiographyPDF'
 import type { GhostwriterResult, Paragraph, ReliabilityLabel } from '../types/agents'
 
 const RELIABILITY_LABEL: Record<ReliabilityLabel, string> = {
@@ -13,6 +16,12 @@ const RELIABILITY_COLOR: Record<ReliabilityLabel, string> = {
   ESTIMATED: '#C8956C',
   UNVERIFIED: '#7A6A5C',
 }
+
+const today = new Date().toLocaleDateString('ko-KR', {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+})
 
 function BackArrow() {
   return (
@@ -100,13 +109,48 @@ function ChapterView({ chapter }: { chapter: GhostwriterResult }) {
 export default function AutobiographyScreen() {
   const navigate = useNavigate()
   const { chapters } = useAutobiographyStore()
-
-  const TAB_LABELS = chapters.length > 0
-    ? chapters.map((ch, i) => ({ id: ch.chapterId, label: `${i + 1}장`, title: ch.chapterTitle }))
-    : [{ id: 'empty', label: '1장', title: '아직 생성되지 않음' }]
+  const { userName } = useAuthStore()
 
   const [activeIdx, setActiveIdx] = useState(0)
+  const [showToast, setShowToast] = useState(false)
+
+  const TAB_LABELS = useMemo(
+    () =>
+      chapters.length > 0
+        ? chapters.map((ch, i) => ({ id: ch.chapterId, label: `${i + 1}장`, title: ch.chapterTitle }))
+        : [{ id: 'empty', label: '1장', title: '아직 생성되지 않음' }],
+    [chapters]
+  )
+
   const activeChapter = chapters[activeIdx]
+
+  const pdfDocument = useMemo(
+    () =>
+      chapters.length > 0 ? (
+        <AutobiographyPDF
+          userName={userName || '이름 미설정'}
+          chapters={chapters}
+          createdAt={today}
+        />
+      ) : null,
+    [chapters, userName]
+  )
+
+  const [pdfInstance] = usePDF(
+    pdfDocument ? { document: pdfDocument } : {}
+  )
+
+  const handleDownload = () => {
+    if (!pdfInstance.loading && pdfInstance.url) {
+      setTimeout(() => {
+        setShowToast(true)
+        setTimeout(() => setShowToast(false), 1000)
+      }, 200)
+    }
+  }
+
+  const canDownload = !pdfInstance.loading && !!pdfInstance.url && chapters.length > 0
+  const fileName = `dearlog_자서전_${userName || '이름없음'}.pdf`
 
   return (
     <div className="flex flex-col min-h-screen bg-[#F8F3EA]">
@@ -158,26 +202,56 @@ export default function AutobiographyScreen() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto pb-28 px-5">
-        {activeChapter ? (
-          <ChapterView chapter={activeChapter} />
-        ) : (
-          <EmptyChapter />
-        )}
+        {activeChapter ? <ChapterView chapter={activeChapter} /> : <EmptyChapter />}
       </div>
 
-      {/* PDF export button (disabled) */}
+      {/* PDF export */}
       <div
         className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[390px] px-5 pb-8 pt-4"
         style={{ backgroundColor: '#F8F3EA' }}
       >
-        <button
-          disabled
-          className="w-full h-14 rounded-2xl text-[16px] font-bold opacity-40"
-          style={{ backgroundColor: '#C8956C', color: '#FFFDF8' }}
-        >
-          PDF로 내보내기 (준비 중)
-        </button>
+        {canDownload ? (
+          <a
+            href={pdfInstance.url!}
+            download={fileName}
+            onClick={handleDownload}
+            className="flex items-center justify-center w-full h-14 rounded-2xl text-[16px] font-bold active:opacity-70"
+            style={{
+              backgroundColor: '#C8956C',
+              color: '#FFFDF8',
+              textDecoration: 'none',
+            }}
+          >
+            PDF로 내보내기
+          </a>
+        ) : (
+          <button
+            disabled
+            className="w-full h-14 rounded-2xl text-[16px] font-bold"
+            style={{
+              backgroundColor: '#C8956C',
+              color: '#FFFDF8',
+              opacity: 0.5,
+            }}
+          >
+            {pdfInstance.loading && chapters.length > 0 ? '생성 중...' : 'PDF로 내보내기 (준비 중)'}
+          </button>
+        )}
       </div>
+
+      {/* Toast */}
+      {showToast && (
+        <div
+          className="fixed top-24 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl text-[14px] font-bold text-white"
+          style={{
+            backgroundColor: '#6B8F71',
+            boxShadow: '0 4px 20px rgba(107,143,113,0.4)',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          저장됐어요 ✓
+        </div>
+      )}
     </div>
   )
 }

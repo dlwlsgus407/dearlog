@@ -350,18 +350,26 @@
 
 ---
 
-## Phase 6. 자서전 PDF 생성
+## Phase 6. 자서전 PDF 생성 ✅ 완료 (2026-05-26)
 
 ### 6-1. PDF 렌더러 세팅
-- [ ] `npm install @react-pdf/renderer`
-- [ ] `src/components/AutobiographyPDF.tsx` — react-pdf 레이아웃
-  - 커버 페이지: 이름, 생성일, DEARLOG 로고
-  - 챕터별 본문: 제목 + 문단 + 신뢰도 각주
-  - Noto Sans KR 폰트 임베드
+- [x] `npm install @react-pdf/renderer` (v4.5.1)
+- [x] `src/components/AutobiographyPDF.tsx` — react-pdf 레이아웃
+  - Font.register: NotoSansKR Regular/Bold (jsDelivr CDN SubsetOTF)
+  - Font.registerHyphenationCallback: 한국어 단어 분리 방지
+  - 커버 페이지: 이름, 생성일, DEARLOG 브랜딩 (배경 #F8F3EA)
+  - 챕터별 본문 페이지: 챕터번호·제목 + 문단 + 신뢰도 뱃지 + 출처 수
+  - 불확실 문단(UNVERIFIED): 회색 텍스트 처리
+  - missingSections: 점선 박스로 표시
+  - 페이지 번호 (fixed, 하단 중앙)
 
 ### 6-2. PDF 다운로드 연동
-- [ ] `AutobiographyScreen.tsx` — "PDF 저장" 버튼 → `PDFDownloadLink` 교체
-- [ ] 다운로드 완료 토스트
+- [x] `AutobiographyScreen.tsx` — usePDF 훅으로 PDF 인스턴스 관리
+  - chapters 있을 때 → usePDF({ document: <AutobiographyPDF ...> })
+  - loading 중: 반투명 비활성 버튼 + "생성 중..." 텍스트
+  - 완료 시: `<a href={url} download={filename}>` 로 교체
+  - 클릭 시 "저장됐어요 ✓" 토스트 1초
+  - 파일명: dearlog_자서전_{userName}.pdf
 
 ---
 
